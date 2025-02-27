@@ -14,7 +14,7 @@ cat > artifacts/sumInputs.sql << EOF
 -- Generated: $(date)
 -- This SQL creates a temporary function that uses WebAssembly to add two numbers
 
-CREATE TEMP FUNCTION sumInputs(x FLOAT64, y FLOAT64)
+CREATE TEMP FUNCTION lat_lng_to_h3(x FLOAT64, y FLOAT64)
 RETURNS FLOAT64
 LANGUAGE js AS r"""
 async function main() {
@@ -29,26 +29,31 @@ async function main() {
         'STACK_MAX': memory.buffer.byteLength,
     };
     const imports = { env };
-    const bytes = new Uint8Array([
-      ${WASM_ARRAY}
-    ]);
-    return WebAssembly.instantiate(bytes, imports).then(wa => {
+const wasmHexLines = [
+${WASM_ARRAY}
+];
+
+const wasmBytes = new Uint8Array(wasmHexLines.join('').match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+
+    return WebAssembly.instantiate(wasmBytes, imports).then(wa => {
         const exports = wa.instance.exports;
-        const sum = exports.sum;
-        return sum(x, y);
+        const func = exports.lat_lng_to_h3;
+        return func(y, x, 7);
     });
 }
 return main();
 """;
 
 -- Example usage
-WITH numbers AS
-  (SELECT 1 AS x, 5 as y
-  UNION ALL
-  SELECT 2 AS x, 10 as y
-  UNION ALL
-  SELECT 3 as x, 15 as y)
-SELECT x, y, sumInputs(x, y) as sum
+WITH numbers AS (
+  SELECT 1 AS lon, 5 as lat UNION ALL
+  SELECT 2 AS x, 10 as y UNION ALL
+  SELECT 3 as x, 15 as y
+  )
+SELECT
+lon,
+lat,
+lat_lng_to_h3(lon, lat) << 12 as h3
 FROM numbers;
 EOF
 
@@ -66,9 +71,9 @@ This SQL file contains a BigQuery UDF (User-Defined Function) powered by WebAsse
 
 ## Function Details
 
-- Function name: \`sumInputs\`
+- Function name: \`lat_lng_to_h3\`
 - Parameters: two FLOAT64 values
-- Returns: The sum of the two values as FLOAT64
+- Returns: The H3 index as INT64
 - Implementation: WebAssembly compiled from Rust
 EOF
 
