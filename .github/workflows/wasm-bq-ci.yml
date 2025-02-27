@@ -48,7 +48,7 @@ jobs:
           ./scripts/generate_bq_query.sh
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: bigquery-wasm-function
           path: artifacts/
