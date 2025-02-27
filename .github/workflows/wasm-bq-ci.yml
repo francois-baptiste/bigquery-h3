@@ -5,13 +5,13 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:  # Permet de déclencher le workflow manuellement
+  workflow_dispatch:
 
 jobs:
-  build-and-generate-artifacts:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Install Rust
@@ -32,6 +32,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Install Binaryen (for wasm-opt) and xxd tool
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binaryen xxd
+
       - name: Compile Rust to WebAssembly
         run: |
           chmod +x ./scripts/compile_wasm.sh
@@ -42,48 +47,39 @@ jobs:
           chmod +x ./scripts/generate_bq_query.sh
           ./scripts/generate_bq_query.sh
 
-      - name: Create ZIP archive of artifacts
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: bigquery-wasm-function
+          path: artifacts/
+
+      - name: Create release ZIP
+        if: github.ref == 'refs/heads/main'
         run: |
           cd artifacts
-          zip -r ../wasm-bigquery-artifacts.zip .
-          cd ..
-          echo "Taille de l'archive ZIP: $(du -h wasm-bigquery-artifacts.zip)"
+          zip -r ../bigquery-wasm-function.zip *
 
-      - name: Upload artifacts folder
-        uses: actions/upload-artifact@v3
-        with:
-          name: wasm-bigquery-artifacts
-          path: artifacts/
-          retention-days: 90
-
-      - name: Upload ZIP artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: wasm-bigquery-artifacts-zip
-          path: wasm-bigquery-artifacts.zip
-          retention-days: 90
-
-      # Création d'une release pour les pushes sur main
-      - name: Create Release
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        id: create_release
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v1
         with:
-          name: WebAssembly BigQuery Release ${{ github.run_number }}
-          tag_name: v0.1.${{ github.run_number }}
-          draft: false
-          prerelease: false
-          files: |
-            wasm-bigquery-artifacts.zip
-            artifacts/bq_query.sql
+          files: bigquery-wasm-function.zip
+          name: WebAssembly BigQuery Function v${{ github.run_number }}
+          tag_name: v${{ github.run_number }}
           body: |
-            ## WebAssembly BigQuery Release
+            # WebAssembly BigQuery Function Release
             
-            Cette release contient:
-            - Fichier WASM compilé
-            - Requête SQL prête à l'emploi pour BigQuery
-            - Autres artifacts du build
+            This release contains a SQL file that creates a BigQuery UDF powered by WebAssembly.
             
-            Généré automatiquement par GitHub Actions le ${{ github.event.repository.updated_at }}
+            ## Changes in this version
+            
+            - Built from commit: ${{ github.sha }}
+            - Build number: ${{ github.run_number }}
+            
+            ## Installation
+            
+            1. Download the ZIP file
+            2. Extract the SQL file
+            3. Run in BigQuery console
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

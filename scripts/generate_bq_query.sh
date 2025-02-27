@@ -1,14 +1,19 @@
 #!/bin/bash
 set -e
 
-# Vérifier que le dossier artifacts existe
+# Get content of generated array file
+WASM_ARRAY=$(cat wasm_array.txt | grep -v "unsigned" | tr -d '\n' | sed 's/  / /g')
+
+# Create artifacts directory
 mkdir -p artifacts
 
-# Récupérer le contenu du fichier d'array généré
-WASM_ARRAY=$(cat artifacts/wasm_array.txt | grep -v "unsigned" | tr -d '\n' | sed 's/  / /g')
+# Generate SQL query with embedded WebAssembly code
+echo "Generating BigQuery SQL with WebAssembly..."
+cat > artifacts/sumInputs.sql << EOF
+-- WebAssembly-powered BigQuery function
+-- Generated: $(date)
+-- This SQL creates a temporary function that uses WebAssembly to add two numbers
 
-# Générer la requête SQL avec le code WebAssembly intégré
-cat > artifacts/bq_query.sql << EOF
 CREATE TEMP FUNCTION sumInputs(x FLOAT64, y FLOAT64)
 RETURNS FLOAT64
 LANGUAGE js AS r"""
@@ -36,6 +41,7 @@ async function main() {
 return main();
 """;
 
+-- Example usage
 WITH numbers AS
   (SELECT 1 AS x, 5 as y
   UNION ALL
@@ -46,23 +52,24 @@ SELECT x, y, sumInputs(x, y) as sum
 FROM numbers;
 EOF
 
-# Créer un fichier README pour expliquer l'usage des artifacts
+# Create a README for the artifact
 cat > artifacts/README.md << EOF
-# WebAssembly pour BigQuery
+# WebAssembly BigQuery Function
 
-Ce dossier contient les artifacts générés pour l'intégration WebAssembly dans BigQuery:
+This SQL file contains a BigQuery UDF (User-Defined Function) powered by WebAssembly.
 
-- \`wasm_bq_function.wasm\`: Fichier WebAssembly compilé
-- \`wasm_array.txt\`: Représentation du binaire WASM en format C array
-- \`bq_query.sql\`: Requête SQL prête à l'emploi pour BigQuery
+## Usage
 
-## Utilisation
+1. Copy the SQL content into your BigQuery query editor
+2. Run the query to see the function in action
+3. Modify the example query at the bottom to use your own data
 
-1. Copiez le contenu du fichier \`bq_query.sql\`
-2. Collez-le dans l'interface de requête BigQuery
-3. Exécutez la requête
+## Function Details
 
-Ces artifacts ont été générés le $(date)
+- Function name: \`sumInputs\`
+- Parameters: two FLOAT64 values
+- Returns: The sum of the two values as FLOAT64
+- Implementation: WebAssembly compiled from Rust
 EOF
 
-echo "Artifacts générés avec succès dans le dossier 'artifacts'"
+echo "BigQuery SQL successfully generated in artifacts/sumInputs.sql"
