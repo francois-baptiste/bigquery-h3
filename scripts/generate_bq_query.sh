@@ -5,7 +5,7 @@ set -e
 mkdir -p artifacts
 
 # Convert WebAssembly binary to hex string
-xxd -p target/wasm32-unknown-unknown/release/wasm_bq_function.wasm | tr -d '\n' > wasm_hex.txt
+xxd -p h3o_optimized.wasm | tr -d '\n' > wasm_hex.txt
 
 # Split the hex string into lines of 64 characters each
 cat wasm_hex.txt | fold -w 64 | awk '{print "\""$0"\","}' > wasm_hex_lines.txt

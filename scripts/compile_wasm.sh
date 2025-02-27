@@ -5,7 +5,4 @@ set -e
 cargo build --target wasm32-unknown-unknown --release
 
 # Optimized WebAssembly binary
-wasm-opt -Oz target/wasm32-unknown-unknown/release/h3o_wasm.wasm -o add_optimized.wasm
-
-# Convert WebAssembly binary to C array for use in SQL
-xxd -p -c 0 add_optimized.wasm > wasm_array.txt
+wasm-opt -Oz target/wasm32-unknown-unknown/release/h3o_wasm.wasm -o h3o_optimized.wasm
