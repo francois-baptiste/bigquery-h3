@@ -8,7 +8,7 @@ mkdir -p artifacts
 xxd -p h3o_optimized.wasm | tr -d '\n' > wasm_hex.txt
 
 # Split the hex string into lines of 64 characters each
-cat wasm_hex.txt | fold -w 64 | awk '{print "\""$0"\","}' > wasm_hex_lines.txt
+cat wasm_hex.txt | fold -w 256 | awk '{print "\""$0"\","}' > wasm_hex_lines.txt
 
 # Generate SQL query with embedded WebAssembly code
 echo "Generating BigQuery SQL with WebAssembly..."
@@ -56,7 +56,7 @@ WITH numbers AS (
 SELECT
 lon,
 lat,
-lat_lng_to_h3(lon, lat) << 12 as h3
+lat_lng_to_h3(lon, lat) as h3
 FROM numbers;
 EOF
 

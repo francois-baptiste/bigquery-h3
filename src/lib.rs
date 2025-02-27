@@ -13,8 +13,10 @@ pub extern "C" fn lat_lng_to_h3(lat: f64, lng: f64, resolution: u8) -> u64 {
         // Convert index to u64
         let h3_index = u64::from(cell);
 
-        // Returns only the upper 52 bits
-        h3_index >> 12
+        const MASK_52_BIT: u64 = (1 << 52) - 1;
+
+        // keep only LSB 52 bits
+        h3_index & MASK_52_BIT
     });
 
     match result {
