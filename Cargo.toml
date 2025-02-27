@@ -1,0 +1,15 @@
+[package]
+name = "h3o_wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+h3o = "0.7.1"  # Vérifiez la dernière version sur crates.io
+
+[profile.release]
+opt-level = "s"
+debug = false
+lto = true
