@@ -1,11 +1,14 @@
 #!/bin/bash
 set -e
 
-# Get content of generated array file
-WASM_ARRAY=$(cat wasm_array.txt | grep -v "unsigned" | tr -d '\n' | sed 's/  / /g')
-
 # Create artifacts directory
 mkdir -p artifacts
+
+# Convert WebAssembly binary to hex string
+xxd -p target/wasm32-unknown-unknown/release/wasm_bq_function.wasm | tr -d '\n' > wasm_hex.txt
+
+# Split the hex string into lines of 64 characters each
+cat wasm_hex.txt | fold -w 64 | awk '{print "\""$0"\","}' > wasm_hex_lines.txt
 
 # Generate SQL query with embedded WebAssembly code
 echo "Generating BigQuery SQL with WebAssembly..."
@@ -15,7 +18,7 @@ cat > artifacts/sumInputs.sql << EOF
 -- This SQL creates a temporary function that uses WebAssembly to add two numbers
 
 CREATE TEMP FUNCTION lat_lng_to_h3(x FLOAT64, y FLOAT64)
-RETURNS FLOAT64
+RETURNS INT64
 LANGUAGE js AS r"""
 async function main() {
     const memory = new WebAssembly.Memory({ initial: 256, maximum: 256 });
@@ -30,7 +33,7 @@ async function main() {
     };
     const imports = { env };
 const wasmHexLines = [
-${WASM_ARRAY}
+$(cat wasm_hex_lines.txt)
 ];
 
 const wasmBytes = new Uint8Array(wasmHexLines.join('').match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
@@ -47,8 +50,8 @@ return main();
 -- Example usage
 WITH numbers AS (
   SELECT 1 AS lon, 5 as lat UNION ALL
-  SELECT 2 AS x, 10 as y UNION ALL
-  SELECT 3 as x, 15 as y
+  SELECT 2 AS lon, 10 as lat UNION ALL
+  SELECT 3 as lon, 15 as lat
   )
 SELECT
 lon,
