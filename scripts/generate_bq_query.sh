@@ -1,11 +1,14 @@
 #!/bin/bash
 set -e
 
-# Retrieve the contents of the generated array file
-WASM_ARRAY=$(cat wasm_array.txt | grep -v "unsigned" | tr -d '\n' | sed 's/  / /g')
+# Vérifier que le dossier artifacts existe
+mkdir -p artifacts
 
-# Generate SQL query with embedded WebAssembly code
-cat > bq_query.sql << EOF
+# Récupérer le contenu du fichier d'array généré
+WASM_ARRAY=$(cat artifacts/wasm_array.txt | grep -v "unsigned" | tr -d '\n' | sed 's/  / /g')
+
+# Générer la requête SQL avec le code WebAssembly intégré
+cat > artifacts/bq_query.sql << EOF
 CREATE TEMP FUNCTION sumInputs(x FLOAT64, y FLOAT64)
 RETURNS FLOAT64
 LANGUAGE js AS r"""
@@ -43,4 +46,23 @@ SELECT x, y, sumInputs(x, y) as sum
 FROM numbers;
 EOF
 
-echo "BigQuery SQL was successfully generated in the file bq_query.sql"
+# Créer un fichier README pour expliquer l'usage des artifacts
+cat > artifacts/README.md << EOF
+# WebAssembly pour BigQuery
+
+Ce dossier contient les artifacts générés pour l'intégration WebAssembly dans BigQuery:
+
+- \`wasm_bq_function.wasm\`: Fichier WebAssembly compilé
+- \`wasm_array.txt\`: Représentation du binaire WASM en format C array
+- \`bq_query.sql\`: Requête SQL prête à l'emploi pour BigQuery
+
+## Utilisation
+
+1. Copiez le contenu du fichier \`bq_query.sql\`
+2. Collez-le dans l'interface de requête BigQuery
+3. Exécutez la requête
+
+Ces artifacts ont été générés le $(date)
+EOF
+
+echo "Artifacts générés avec succès dans le dossier 'artifacts'"
