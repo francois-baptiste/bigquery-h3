@@ -1,10 +1,10 @@
 #!/bin/bash
 set -e
 
-# Récupérer le contenu du fichier d'array généré
+# Retrieve the contents of the generated array file
 WASM_ARRAY=$(cat wasm_array.txt | grep -v "unsigned" | tr -d '\n' | sed 's/  / /g')
 
-# Générer la requête SQL avec le code WebAssembly intégré
+# Generate SQL query with embedded WebAssembly code
 cat > bq_query.sql << EOF
 CREATE TEMP FUNCTION sumInputs(x FLOAT64, y FLOAT64)
 RETURNS FLOAT64
@@ -43,4 +43,4 @@ SELECT x, y, sumInputs(x, y) as sum
 FROM numbers;
 EOF
 
-echo "BigQuery SQL a été généré avec succès dans le fichier bq_query.sql"
+echo "BigQuery SQL was successfully generated in the file bq_query.sql"

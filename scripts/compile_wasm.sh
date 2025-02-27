@@ -1,8 +1,11 @@
 #!/bin/bash
 set -e
 
-# Compiler le code Rust en WebAssembly
+# Compile Rust code in WebAssembly
 cargo build --target wasm32-unknown-unknown --release
 
-# Convertir le binaire WebAssembly en array C pour l'utiliser dans le SQL
-xxd -i target/wasm32-unknown-unknown/release/wasm_bq_function.wasm > wasm_array.txt
+# Optimized WebAssembly binary
+wasm-opt -Oz target/wasm32-unknown-unknown/release/h3o_wasm.wasm -o add_optimized.wasm
+
+# Convert WebAssembly binary to C array for use in SQL
+xxd -p -c 0 add_optimized.wasm > wasm_array.txt
