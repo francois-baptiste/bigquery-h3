@@ -1,0 +1,42 @@
+name: WebAssembly BigQuery CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32-unknown-unknown
+          override: true
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Compile Rust to WebAssembly
+        run: |
+          chmod +x ./scripts/compile_wasm.sh
+          ./scripts/compile_wasm.sh
+
+      - name: Generate BigQuery SQL
+        run: |
+          chmod +x ./scripts/generate_bq_query.sh
+          ./scripts/generate_bq_query.sh
+
