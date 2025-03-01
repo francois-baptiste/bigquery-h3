@@ -7,6 +7,7 @@ embedded in a JavaScript UDF.
 """
 
 import os
+from collections import Counter
 
 
 def read_binary_file(filename):
@@ -18,45 +19,46 @@ def hex_encode(binary_data):
     return binary_data.hex()
 
 
-def compress_hex_rle(hex_string):
-    result = []
+def compress_hex_dictionary(hex_string):
+    # Diviser la chaîne hexadécimale en morceaux de 4 caractères (2 octets)
+    chunks = [hex_string[i:i + 4] for i in range(0, len(hex_string), 4)]
+
+    # Identifier les motifs les plus fréquents
+    counter = Counter(chunks)
+    most_common = counter.most_common(128)  # Utiliser les 60 motifs les plus courants
+
+    # Créer un dictionnaire de substitution
+    # Utiliser des caractères non-hexadécimaux comme marqueurs
+    # Nous utilisons les caractères ASCII entre 0x7B et 0xD6 (123-214)
+    dictionary = {}
+    for i, (pattern, _) in enumerate(most_common):
+        if len(pattern) == 4:  # S'assurer que le motif est de 4 caractères
+            marker = chr(123 + i)
+            dictionary[pattern] = marker
+
+    # Encoder avec le dictionnaire
+    compressed = []
     i = 0
-
-    # Traiter les caractères deux par deux (chaque octet en hex)
     while i < len(hex_string):
-        if i + 1 < len(hex_string):
-            current_pair = hex_string[i:i + 2]
-            count = 1
-            j = i + 2
+        found = False
+        if i + 3 < len(hex_string):
+            chunk = hex_string[i:i + 4]
+            if chunk in dictionary:
+                compressed.append(dictionary[chunk])
+                i += 4
+                found = True
 
-            # Compter combien de fois ce pair apparaît de suite
-            while j + 1 < len(hex_string) and hex_string[j:j + 2] == current_pair:
-                count += 1
-                j += 2
+        if not found:
+            compressed.append(hex_string[i:i + 2])
+            i += 2
 
-            if count > 1:
-                # Utiliser lettres non-hexadécimales (g-z) pour l'encodage RLE
-                if count <= 20:
-                    # g=1, h=2, ..., z=20
-                    count_char = chr(ord('g') + count - 1)
-                    result.append(count_char + current_pair)
-                else:
-                    # Si count > 20, diviser en plusieurs segments
-                    while count > 0:
-                        segment = min(count, 20)
-                        count_char = chr(ord('g') + segment - 1)
-                        result.append(count_char + current_pair)
-                        count -= segment
-            else:
-                result.append(current_pair)
+    # Créer l'entête du dictionnaire
+    header = []
+    for pattern, marker in dictionary.items():
+        header.append(f"{marker}{pattern}")
 
-            i = j
-        else:
-            # Cas d'un caractère unique à la fin
-            result.append(hex_string[i])
-            i += 1
+    return "".join(header) + "|" + "".join(compressed)
 
-    return ''.join(result)
 
 def generate_js_decompression(compressed_data):
     # Créer une version formatée du code hexadécimal compressé
@@ -75,21 +77,32 @@ function decompressWasm() {{
   const compressed = 
 {formatted_data};
 
-  let decompressed = '';
-  let i = 0;
+  // Séparer le dictionnaire et les données
+  const parts = compressed.split('|');
+  const dictPart = parts[0];
+  const dataPart = parts[1];
 
-  while (i < compressed.length) {{
-    // Vérifier si le caractère actuel est un marqueur de répétition (g-z)
-    if (compressed[i] >= 'g' && compressed[i] <= 'z') {{
-      const count = compressed[i].charCodeAt(0) - 'g'.charCodeAt(0) + 1;
-      const pair = compressed[i+1] + compressed[i+2];
-      for (let j = 0; j < count; j++) {{
-        decompressed += pair;
-      }}
-      i += 3;
-    }} else {{
-      decompressed += compressed[i];
+  // Construire le dictionnaire
+  const dict = {{}};
+  let i = 0;
+  while (i < dictPart.length) {{
+    const marker = dictPart[i];
+    const pattern = dictPart.substr(i+1, 4);
+    dict[marker] = pattern;
+    i += 5;
+  }}
+
+  // Décompresser les données
+  let decompressed = '';
+  i = 0;
+  while (i < dataPart.length) {{
+    const char = dataPart[i];
+    if (dict[char]) {{
+      decompressed += dict[char];
       i++;
+    }} else {{
+      decompressed += dataPart.substr(i, 2);
+      i += 2;
     }}
   }}
 
@@ -139,6 +152,7 @@ FROM numbers;
 """
     return sql_code
 
+
 # Create artifacts directory if it doesn't exist
 os.makedirs('artifacts', exist_ok=True)
 
@@ -146,8 +160,8 @@ os.makedirs('artifacts', exist_ok=True)
 binary_data = read_binary_file("h3o_optimized.wasm")
 hex_data = hex_encode(binary_data)
 
-# Compresser les données en utilisant RLE
-compressed_data = compress_hex_rle(hex_data)
+# Compresser les données en utilisant un dictionnaire simple
+compressed_data = compress_hex_dictionary(hex_data)
 
 # Calculer le taux de compression
 original_size = len(binary_data)
