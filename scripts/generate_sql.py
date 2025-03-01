@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 Generate BigQuery SQL with embedded WebAssembly code.
-This script reads a WebAssembly byte array from wasm_array.txt,
-formats it, and creates a BigQuery SQL file with the WebAssembly
-embedded in a JavaScript UDF.
+This script reads a WebAssembly byte array, compresses it using a hex-encoded
+dictionary, and creates a BigQuery SQL file with the WebAssembly embedded in
+a JavaScript UDF.
 """
 
 import os
@@ -11,34 +11,42 @@ from collections import Counter
 
 
 def read_binary_file(filename):
+    """Read binary data from a file"""
     with open(filename, 'rb') as file:
         return file.read()
 
 
 def hex_encode(binary_data):
+    """Convert binary data to hexadecimal string"""
     return binary_data.hex()
 
 
 def compress_hex_dictionary(hex_string):
-    # Diviser la chaîne hexadécimale en morceaux de 4 caractères (2 octets)
+    """
+    Compress a hexadecimal string using a custom dictionary compression
+    Using non-hexadecimal characters (A-F, G-Z) to encode dictionary entries
+    """
+    # Split the hexadecimal string into 4-character chunks (2 bytes)
     chunks = [hex_string[i:i + 4] for i in range(0, len(hex_string), 4)]
 
-    # Identifier les motifs les plus fréquents
+    # Identify the most frequent patterns
     counter = Counter(chunks)
-    most_common = counter.most_common(36)  # Utiliser les 36 motifs les plus courants (pour rester dans [A-Z][a-z])
+    most_common = counter.most_common(20)  # Use up to 20 most common patterns
 
-    # Créer un dictionnaire de substitution
-    # Utiliser des caractères sûrs comme marqueurs: @ puis A-Z, a-z
+    # Create a substitution dictionary using non-hex letters as markers
     dictionary = {}
-    markers = ['@'] + [chr(65 + i) for i in range(26)] + [chr(97 + i) for i in range(26)]
+    reverse_dict = {}
+
+    # Use G-Z as markers for dictionary entries (non-hex characters)
+    valid_markers = "GHIJKLMNOPQRSTUVWXYZ"
 
     for i, (pattern, _) in enumerate(most_common):
-        if len(pattern) == 4 and i < len(
-                markers):  # S'assurer que le motif est de 4 caractères et qu'on a assez de marqueurs
-            marker = markers[i]
+        if i < len(valid_markers) and len(pattern) == 4:
+            marker = valid_markers[i]
             dictionary[pattern] = marker
+            reverse_dict[marker] = pattern
 
-    # Encoder avec le dictionnaire
+    # Encode using the dictionary
     compressed = []
     i = 0
     while i < len(hex_string):
@@ -51,22 +59,31 @@ def compress_hex_dictionary(hex_string):
                 found = True
 
         if not found:
+            # Add raw hex data (not compressed)
             compressed.append(hex_string[i:i + 2])
             i += 2
 
-    # Créer l'entête du dictionnaire
-    header = []
-    for pattern, marker in dictionary.items():
-        header.append(f"{marker}{pattern}")
+    # Build the serialized dictionary
+    serialized_dict = []
+    for marker, pattern in reverse_dict.items():
+        serialized_dict.append(f"{marker}{pattern}")
 
-    return "".join(header) + "#" + "".join(compressed)
+    # Return the dictionary and compressed data
+    return "".join(serialized_dict), "".join(compressed)
 
 
-def generate_js_decompression(compressed_data):
-    # Créer une version formatée du code hexadécimal compressé
+def generate_js_decompression(dict_part, data_part):
+    """Generate JavaScript code for decompression and SQL wrapper"""
+    # Format dictionary and data for code readability
+    formatted_dict = ''
+    for i in range(0, len(dict_part), 200):
+        chunk = dict_part[i:i + 200]
+        formatted_dict += f'    "{chunk}"+\n'
+    formatted_dict = formatted_dict.rstrip('+\n')
+
     formatted_data = ''
-    for i in range(0, len(compressed_data), 300):
-        chunk = compressed_data[i:i + 300]
+    for i in range(0, len(data_part), 200):
+        chunk = data_part[i:i + 200]
         formatted_data += f'    "{chunk}"+\n'
     formatted_data = formatted_data.rstrip('+\n')
 
@@ -74,41 +91,46 @@ def generate_js_decompression(compressed_data):
 RETURNS INT64
 LANGUAGE js AS r\"\"\"
 
-// Décompression WASM
+// WASM decompression with hexadecimal dictionary
 function decompressWasm() {{
-  const compressed = 
+  // Dictionary encoded in hexadecimal
+  const dictPart = 
+{formatted_dict};
+
+  // Compressed data
+  const dataPart = 
 {formatted_data};
 
-  // Séparer le dictionnaire et les données (avec # comme séparateur)
-  const parts = compressed.split('#');
-  const dictPart = parts[0];
-  const dataPart = parts[1];
-
-  // Construire le dictionnaire
+  // Build the dictionary
   const dict = {{}};
   let i = 0;
   while (i < dictPart.length) {{
-    const marker = dictPart[i];
+    const marker = dictPart.substr(i, 1);
     const pattern = dictPart.substr(i+1, 4);
     dict[marker] = pattern;
     i += 5;
   }}
 
-  // Décompresser les données
+  // Decompress the data
   let decompressed = '';
   i = 0;
   while (i < dataPart.length) {{
-    const char = dataPart[i];
-    if (dict[char]) {{
-      decompressed += dict[char];
-      i++;
+    const char = dataPart.substr(i, 1);
+    // Check if it's a dictionary marker (non-hexadecimal character)
+    if (/[G-Z]/.test(char)) {{
+      // It's a code in our dictionary
+      if (dict[char]) {{
+        decompressed += dict[char];
+      }}
+      i += 1;
     }} else {{
+      // It's a regular hex byte
       decompressed += dataPart.substr(i, 2);
       i += 2;
     }}
   }}
 
-  // Convertir la chaîne hexadécimale en tableau d'octets
+  // Convert the hexadecimal string to a byte array
   const bytes = new Uint8Array(decompressed.length / 2);
   for (let i = 0; i < decompressed.length; i += 2) {{
     bytes[i / 2] = parseInt(decompressed.substr(i, 2), 16);
@@ -158,30 +180,32 @@ FROM numbers;
 # Create artifacts directory if it doesn't exist
 os.makedirs('artifacts', exist_ok=True)
 
-# Lire le fichier binaire et encoder en hexadécimal
+# Read binary file and encode as hexadecimal
 binary_data = read_binary_file("h3o_optimized.wasm")
 hex_data = hex_encode(binary_data)
 
-# Compresser les données en utilisant un dictionnaire simple
-compressed_data = compress_hex_dictionary(hex_data)
+# Compress data using a hexadecimal dictionary
+dict_part, data_part = compress_hex_dictionary(hex_data)
 
-# Calculer le taux de compression
+# Calculate compression ratio
 original_size = len(binary_data)
-compressed_size = len(compressed_data) / 2  # approximation car notre encodage compressé utilise des caractères
+compressed_size = (len(dict_part) + len(data_part)) / 2  # estimation in bytes
 compression_ratio = (1 - compressed_size / original_size) * 100
 
-print(f"Taille originale: {original_size} octets")
-print(f"Taille compressée estimée: {compressed_size:.0f} octets")
-print(f"Taux de compression: {compression_ratio:.2f}%")
+print(f"Original size: {original_size} bytes")
+print(f"Estimated compressed size: {compressed_size:.0f} bytes")
+print(f"Dictionary size: {len(dict_part) / 2:.0f} bytes")
+print(f"Compressed data size: {len(data_part) / 2:.0f} bytes")
+print(f"Compression ratio: {compression_ratio:.2f}%")
 
-# Générer le code JavaScript pour la décompression
-sql_content = generate_js_decompression(compressed_data)
+# Generate JavaScript code for decompression
+sql_content = generate_js_decompression(dict_part, data_part)
 
-# Écrire le résultat dans un fichier
+# Write the result to a file
 output_file = "artifacts/sumInputs.sql"
-with open(output_file, 'w', encoding='utf-8') as f:
+with open(output_file, 'w') as f:
     f.write(sql_content)
-print(f"Code JavaScript enregistré dans {output_file}")
+print(f"JavaScript code saved to {output_file}")
 
 # Create README for the artifact
 readme_content = """# WebAssembly BigQuery Function
@@ -196,13 +220,13 @@ This SQL file contains a BigQuery UDF (User-Defined Function) powered by WebAsse
 
 ## Function Details
 
-- Function name: \`lat_lng_to_h3\`
-- Parameters: two FLOAT64 values
+- Function name: `lat_lng_to_h3`
+- Parameters: x (longitude) and y (latitude) as FLOAT64, resolution as INT64
 - Returns: The H3 index as INT64
 - Implementation: WebAssembly compiled from Rust
 """
 
-with open('artifacts/README.md', 'w', encoding='utf-8') as f:
+with open('artifacts/README.md', 'w') as f:
     f.write(readme_content)
 
 print("BigQuery SQL successfully generated in artifacts/sumInputs.sql")
