@@ -25,15 +25,17 @@ def compress_hex_dictionary(hex_string):
 
     # Identifier les motifs les plus fréquents
     counter = Counter(chunks)
-    most_common = counter.most_common(128)  # Utiliser les 60 motifs les plus courants
+    most_common = counter.most_common(36)  # Utiliser les 36 motifs les plus courants (pour rester dans [A-Z][a-z])
 
     # Créer un dictionnaire de substitution
-    # Utiliser des caractères non-hexadécimaux comme marqueurs
-    # Nous utilisons les caractères ASCII entre 0x7B et 0xD6 (123-214)
+    # Utiliser des caractères sûrs comme marqueurs: @ puis A-Z, a-z
     dictionary = {}
+    markers = ['@'] + [chr(65 + i) for i in range(26)] + [chr(97 + i) for i in range(26)]
+
     for i, (pattern, _) in enumerate(most_common):
-        if len(pattern) == 4:  # S'assurer que le motif est de 4 caractères
-            marker = chr(123 + i)
+        if len(pattern) == 4 and i < len(
+                markers):  # S'assurer que le motif est de 4 caractères et qu'on a assez de marqueurs
+            marker = markers[i]
             dictionary[pattern] = marker
 
     # Encoder avec le dictionnaire
@@ -57,7 +59,7 @@ def compress_hex_dictionary(hex_string):
     for pattern, marker in dictionary.items():
         header.append(f"{marker}{pattern}")
 
-    return "".join(header) + "|" + "".join(compressed)
+    return "".join(header) + "#" + "".join(compressed)
 
 
 def generate_js_decompression(compressed_data):
@@ -77,8 +79,8 @@ function decompressWasm() {{
   const compressed = 
 {formatted_data};
 
-  // Séparer le dictionnaire et les données
-  const parts = compressed.split('|');
+  // Séparer le dictionnaire et les données (avec # comme séparateur)
+  const parts = compressed.split('#');
   const dictPart = parts[0];
   const dataPart = parts[1];
 
@@ -177,7 +179,7 @@ sql_content = generate_js_decompression(compressed_data)
 
 # Écrire le résultat dans un fichier
 output_file = "artifacts/sumInputs.sql"
-with open(output_file, 'w') as f:
+with open(output_file, 'w', encoding='utf-8') as f:
     f.write(sql_content)
 print(f"Code JavaScript enregistré dans {output_file}")
 
@@ -200,7 +202,7 @@ This SQL file contains a BigQuery UDF (User-Defined Function) powered by WebAsse
 - Implementation: WebAssembly compiled from Rust
 """
 
-with open('artifacts/README.md', 'w') as f:
+with open('artifacts/README.md', 'w', encoding='utf-8') as f:
     f.write(readme_content)
 
 print("BigQuery SQL successfully generated in artifacts/sumInputs.sql")
