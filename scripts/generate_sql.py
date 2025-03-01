@@ -61,12 +61,12 @@ def compress_hex_rle(hex_string):
 def generate_js_decompression(compressed_data):
     # Créer une version formatée du code hexadécimal compressé
     formatted_data = ''
-    for i in range(0, len(compressed_data), 200):
-        chunk = compressed_data[i:i + 200]
+    for i in range(0, len(compressed_data), 300):
+        chunk = compressed_data[i:i + 300]
         formatted_data += f'    "{chunk}"+\n'
     formatted_data = formatted_data.rstrip('+\n')
 
-    sql_code = f"""CREATE TEMP FUNCTION lat_lng_to_h3(x FLOAT64, y FLOAT64)
+    sql_code = f"""CREATE TEMP FUNCTION lat_lng_to_h3(x FLOAT64, y FLOAT64, res INT64)
 RETURNS INT64
 LANGUAGE js AS r\"\"\"
 
@@ -119,7 +119,7 @@ async function main() {{
     return WebAssembly.instantiate(wasmBytes, imports).then(wa => {{
         const exports = wa.instance.exports;
         const func = exports.lat_lng_to_h3;
-        return func(x, y);
+        return func(y, x, res);
     }});
 }}
 return main();
@@ -127,14 +127,14 @@ return main();
 
 -- Example usage
 WITH numbers AS (
-  SELECT 1 AS lon, 5 as lat UNION ALL
-  SELECT 2 AS lon, 10 as lat UNION ALL
-  SELECT 3 as lon, 15 as lat
+  SELECT 1 AS lon, 5 as lat, 3 as res UNION ALL
+  SELECT 2 AS lon, 10 as lat, 5 as res UNION ALL
+  SELECT 3 as lon, 15 as lat, 7 as res
   )
 SELECT
 lon,
 lat,
-lat_lng_to_h3(lon, lat) as h3
+lat_lng_to_h3(lon, lat, res) as h3
 FROM numbers;
 """
     return sql_code
