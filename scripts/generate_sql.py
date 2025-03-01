@@ -15,7 +15,7 @@ os.makedirs('artifacts', exist_ok=True)
 
 # Read the WebAssembly array from the file
 print("Reading WebAssembly byte array...")
-with open('wasm_array.txt', 'r') as f:
+with open('wasm_hex.txt', 'r') as f:
     wasm_array_content = f.read()
 
 # Clean up the array content (remove variable names and newlines)
