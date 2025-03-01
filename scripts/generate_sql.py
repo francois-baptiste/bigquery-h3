@@ -24,21 +24,29 @@ def hex_encode(binary_data):
 def compress_hex_dictionary(hex_string):
     """
     Compress a hexadecimal string using a custom dictionary compression
-    Using non-hexadecimal characters (A-F, G-Z) to encode dictionary entries
+    Using non-hexadecimal characters to encode dictionary entries
     """
     # Split the hexadecimal string into 4-character chunks (2 bytes)
     chunks = [hex_string[i:i + 4] for i in range(0, len(hex_string), 4)]
 
     # Identify the most frequent patterns
     counter = Counter(chunks)
-    most_common = counter.most_common(20)  # Use up to 20 most common patterns
+    # Utilisez plus de motifs communs (jusqu'à 80) pour profiter du dictionnaire étendu
+    most_common = counter.most_common(80)
 
     # Create a substitution dictionary using non-hex letters as markers
     dictionary = {}
     reverse_dict = {}
 
-    # Use G-Z as markers for dictionary entries (non-hex characters)
-    valid_markers = "GHIJKLMNOPQRSTUVWXYZ"
+    # Utilisez une gamme beaucoup plus large de caractères comme marqueurs
+    # Exclure les caractères qui pourraient interférer avec le code JS: \, ", ', `, $, {, },
+    valid_markers = (
+            "GHIJKLMNOPQRSTUVWXYZ" +  # Majuscules non-hexa
+            "ghijklmnopqrstuvwxyz" +  # Minuscules non-hexa
+            "!#%&()*+,-./:;<=>?@[]^_|~" +  # Caractères spéciaux sans interférence
+            "ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞß" +  # Caractères accentués et internationaux
+            "àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ"  # Caractères accentués minuscules
+    )
 
     for i, (pattern, _) in enumerate(most_common):
         if i < len(valid_markers) and len(pattern) == 4:
@@ -117,7 +125,7 @@ function decompressWasm() {{
   while (i < dataPart.length) {{
     const char = dataPart.substr(i, 1);
     // Check if it's a dictionary marker (non-hexadecimal character)
-    if (/[G-Z]/.test(char)) {{
+    if (!/[0-9a-fA-F]/.test(char)) {{
       // It's a code in our dictionary
       if (dict[char]) {{
         decompressed += dict[char];
